@@ -1,10 +1,10 @@
 {
   "nome": "Guilherme Oliveira",
   "contato": {
-    "telefone": "",
+    "telefone": "(62) 99822-3133",
     "email": "gui.carvalhal8@gmail.com",
-    "linkedin": "",
-    "github": "",
+    "linkedin": "linkedin.com/in/guilherme-oliveira-dev-ia",
+    "github": "github.com/guicarvalhal8",
     "portfolio": "",
     "cidade": "Anápolis/GO"
   },
@@ -72,7 +72,9 @@
     "Git/GitHub",
     "Render"
   ],
-  "idiomas": [],
+  "idiomas": [
+    "Inglês intermediário"
+  ],
   "cursos": [],
   "observacoes": ""
 }

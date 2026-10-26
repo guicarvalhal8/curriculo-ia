@@ -23,6 +23,19 @@ Sem a chave, o sistema roda em **modo demonstração**: ele só monta o currícu
 
 Cada currículo gerado fica salvo no navegador, em **Currículos salvos**. Você também pode guardar uma vaga com a descrição usando **Salvar vaga**.
 
+## Integração com o vagas-bot
+
+A tela inicial lista as vagas que o [vagas-bot](https://github.com/guicarvalhal8/vagas-bot) enviou (lidas do `vagas.db` dele). Um clique gera o currículo da vaga. **Atualizar** faz `git pull` no vagas-bot para trazer as vagas coletadas pelas Actions.
+
+- Vagas sem descrição no banco: a descrição é buscada no anúncio (GitHub, Gupy e LinkedIn; o Indeed bloqueia).
+- **Candidatar com este currículo** manda a folha da tela para o `candidatar.py` do vagas-bot (`ponte_web.py`, em 127.0.0.1:47614). Ele gera o PDF e se candidata com ele por e-mail ou formulário; o que não souber responder, pergunta no Telegram.
+- Marcadores como `[X]` bloqueiam o envio: troque por números reais antes.
+
+Configuração (opcional, no `.env.local`):
+
+- `VAGAS_BOT_DIR`: pasta do vagas-bot. O padrão é `../vagas-bot/vagas-bot`.
+- `PONTE_VAGAS_BOT`: endereço da ponte. O padrão é `http://127.0.0.1:47614`.
+
 ## Estrutura
 
 | Arquivo | O que é |
@@ -31,7 +44,9 @@ Cada currículo gerado fica salvo no navegador, em **Currículos salvos**. Você
 | `data/vagas.json` | Lista de vagas prontas |
 | `src/lib/skill-curriculo-ats.md` | As regras do vídeo, usadas como prompt da IA |
 | `src/lib/gerar.ts` | Chamada ao Gemini ou ao Claude, modo demonstração e checklist automático |
-| `src/app/api/*` | Rotas `gerar`, `perfil` e `vagas` |
+| `src/app/api/*` | Rotas `gerar`, `perfil`, `vagas`, `vagas-bot` e `candidatar` |
+| `src/lib/vagasBot.ts` | Leitura do `vagas.db` do vagas-bot |
+| `src/lib/descricaoVaga.ts` | Busca da descrição no anúncio |
 | `src/components/Curriculo.tsx` | A folha A4 de uma coluna (sem foto, tabela ou barrinha) |
 | `.claude/skills/curriculo-ats/` | A mesma skill, para o Claude Code usar ao evoluir o projeto |
 

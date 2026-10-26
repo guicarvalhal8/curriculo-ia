@@ -55,3 +55,15 @@ export type RespostaGerar = {
   demo: boolean;
   modelo?: string;
 };
+
+/** Vaga coletada pelo vagas-bot (lida do vagas.db dele). */
+export type VagaBot = {
+  id: string;
+  titulo: string;
+  empresa: string;
+  local: string;
+  link: string;
+  fonte: string;
+  descricao: string;
+  data: string;
+};

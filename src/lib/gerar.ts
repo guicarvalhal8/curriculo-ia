@@ -11,7 +11,7 @@ const CONTRATO_SAIDA = `
 Responda APENAS com um objeto JSON válido, sem texto antes ou depois e sem bloco de código, neste formato:
 {
   "titulo": "nome exato da vaga",
-  "resumo": "no máximo 3 linhas: quem é, o que domina, o que entrega",
+  "resumo": "no máximo 3 linhas na folha A4 (cerca de 280 caracteres): quem é, o que domina, o que entrega",
   "experiencias": [{ "cargo": "", "empresa": "", "periodo": "", "itens": ["Verbo de ação + entrega + número"] }],
   "projetos": [{ "nome": "", "itens": ["Verbo de ação + entrega + resultado"] }],
   "formacao": [{ "curso": "", "instituicao": "", "periodo": "" }],
@@ -27,7 +27,10 @@ Regras extras:
 - Copie "empresa" exatamente como está nos dados (o sistema usa esse campo para buscar cargo e período originais).
 - Nunca invente empresa, cargo, período, habilidade ou número. Quando faltar um número, use um marcador entre colchetes, como [X%] ou [N clientes], e registre em "pendencias".
 - Não aumente o papel do candidato: só use verbos como "liderei", "gerenciei" ou "coordenei" e títulos como "especialista" ou "sênior" se os dados disserem isso. Na dúvida, use "desenvolvi", "criei", "implementei" ou "integrei".
-- Escolha e ordene experiências e projetos pelo que mais importa para a vaga. Pode deixar de fora o que não ajuda.
+- Experiências ficam em ordem cronológica inversa, como no passo 6 (o sistema reordena pelo perfil). Projetos podem ser escolhidos e ordenados pelo que mais importa para a vaga. Pode deixar de fora o que não ajuda.
+- Escreva os itens na 1ª pessoa do pretérito ("Desenvolvi", "Integrei", "Criei"), sempre começando pelo verbo.
+- Todo item de experiência termina com número ou resultado. Se os dados não têm o número, escreva o item com o marcador entre colchetes no lugar dele, por exemplo "Automatizei [N] relatórios, economizando [X horas/semana]".
+- Em "palavrasChave", liste só termos copiados letra por letra da descrição da vaga.
 - Máximo de 4 itens por experiência e 2 por projeto, para caber em 1 página.
 - Se a vaga pede algo que o candidato não tem, NÃO coloque no currículo: avise em "pendencias".
 - Escreva em português do Brasil.
@@ -60,7 +63,7 @@ function experienciaDoPerfil(perfil: Perfil, empresa: string) {
   });
 }
 
-function normalizar(bruto: Record<string, unknown>, perfil: Perfil): Curriculo {
+function normalizar(bruto: Record<string, unknown>, perfil: Perfil, tituloVaga: string): Curriculo {
   const arr = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
   const s = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const pendencias = lista(bruto.pendencias);
@@ -72,38 +75,73 @@ function normalizar(bruto: Record<string, unknown>, perfil: Perfil): Curriculo {
       pendencias.unshift(`A IA citou uma experiência que não está no seu perfil ("${s(e.cargo)} – ${s(e.empresa)}") e ela foi removida.`);
       return [];
     }
-    return [{ cargo: original.cargo, empresa: original.empresa, periodo: original.periodo, itens: lista(e.itens) }];
+    // Passo 6: sem número, o item ganha um marcador visível para o candidato preencher.
+    const itens = lista(e.itens).map((i) => (/\d|\[[^\]]+\]/.test(i) ? i : `${i.replace(/\.$/, "")} [resultado/número].`));
+    return [{ original, cargo: original.cargo, empresa: original.empresa, periodo: original.periodo, itens }];
   });
+  // Passo 6: ordem cronológica inversa = a ordem do perfil (o mais recente primeiro).
+  experiencias.sort((a, b) => perfil.experiencias.indexOf(a.original) - perfil.experiencias.indexOf(b.original));
+  if (experiencias.some((e) => e.itens.some((i) => i.includes("[resultado/número]")))) {
+    pendencias.push("Troque os marcadores [resultado/número] por números reais (ou apague o trecho), e coloque esses números em Meus dados para os próximos currículos.");
+  }
+
+  // Passo 5: "nunca invente uma habilidade para bater com a vaga". O que não está no perfil sai.
+  const sugeridas = lista(bruto.habilidades);
+  const inventadas = habilidadesForaDoPerfil(sugeridas, perfil);
+  if (inventadas.length) {
+    pendencias.push(
+      `Removi do currículo habilidades que não estão no seu perfil: ${inventadas.join(", ")}. Se você tem alguma, adicione em Meus dados.`,
+    );
+  }
 
   return {
     // Nome e contato vêm sempre do perfil, nunca da IA.
     nome: perfil.nome,
     contato: perfil.contato,
-    titulo: s(bruto.titulo),
+    // Passo 3: o título é o nome exato da vaga, não o que a IA achar melhor.
+    titulo: tituloVaga,
     resumo: s(bruto.resumo),
-    experiencias,
+    experiencias: experiencias.map(({ original: _o, ...e }) => (void _o, e)),
     projetos: arr(bruto.projetos).map((p) => ({ nome: s(p.nome), itens: lista(p.itens) })),
-    formacao: arr(bruto.formacao).map((f) => ({
-      curso: s(f.curso),
-      instituicao: s(f.instituicao),
-      periodo: s(f.periodo),
-    })),
-    habilidades: lista(bruto.habilidades),
-    idiomas: lista(bruto.idiomas),
-    cursos: lista(bruto.cursos),
+    // Formação, idiomas e cursos não precisam de reescrita: vêm direto do perfil.
+    formacao: perfil.formacao,
+    habilidades: sugeridas.filter((h) => !inventadas.includes(h)),
+    idiomas: perfil.idiomas,
+    cursos: perfil.cursos,
     palavrasChave: lista(bruto.palavrasChave),
     pendencias,
   };
 }
 
-/** Confere as regras do vídeo que dá pra checar automaticamente. */
-export function validar(c: Curriculo, tituloVaga: string): ItemChecklist[] {
+/** Habilidades que não aparecem em lugar nenhum do perfil. */
+function habilidadesForaDoPerfil(habilidades: string[], perfil: Perfil): string[] {
+  const textoPerfil = norm(JSON.stringify(perfil));
+  const doPerfil = perfil.habilidades.map((h) => norm(h.split(" (")[0]));
+  return habilidades.filter((h) => {
+    const alvo = norm(h);
+    return !textoPerfil.includes(alvo) && !doPerfil.some((p) => p && alvo.includes(p));
+  });
+}
+
+/** Verbo no pretérito ("Desenvolvi", "Construí", "Desenvolveu", "Implementou"). Gerúndio e substantivo não passam. */
+const comecaComVerbo = (item: string) => /^\p{L}+(ei|i|í|ou|eu|iu)(?=[\s,.;:]|$)/u.test(item.trim().normalize("NFC"));
+
+/** Confere as regras dos 7 passos que dá pra checar automaticamente. */
+export function validar(c: Curriculo, tituloVaga: string, perfil: Perfil, descricao = ""): ItemChecklist[] {
+  const foraDoPerfil = habilidadesForaDoPerfil(c.habilidades, perfil);
+  const semVerbo = [...c.experiencias.flatMap((e) => e.itens), ...c.projetos.flatMap((p) => p.itens)].filter(
+    (i) => !comecaComVerbo(i),
+  );
+  const marcadores = c.experiencias.flatMap((e) => e.itens).filter((i) => /\[[^\]]+\]/.test(i)).length;
+  // Passo 5: a palavra-chave só vale se estiver escrita como na vaga.
+  const desc = norm(descricao);
+  const chavesForaDaVaga = desc ? c.palavrasChave.filter((k) => !desc.includes(norm(k))) : [];
   const texto = JSON.stringify(c);
   const itens = [...c.experiencias.flatMap((e) => e.itens), ...c.projetos.flatMap((p) => p.itens)];
   const semNumero = c.experiencias.flatMap((e) => e.itens).filter((i) => !/\d|\[[^\]]+\]/.test(i));
   const faltaContato = (["telefone", "email", "linkedin"] as const).filter((k) => !c.contato[k]);
   const inflados = [c.resumo, ...itens].filter((i) =>
-    /\b(liderei|lider(ou|ando)?|gerenciei|coordenei|chefiei|especialista|s[eê]nior)\b/i.test(i),
+    /\b(liderei|lider(ou|ando)?|gerenci(ei|ou|ando)|coorden(ei|ou|ando)|chefiei|especialista|especializad[oa]|s[eê]nior)\b/i.test(i),
   );
 
   return [
@@ -128,14 +166,39 @@ export function validar(c: Curriculo, tituloVaga: string): ItemChecklist[] {
     },
     {
       regra: "Experiências com número ou resultado",
-      ok: semNumero.length === 0,
-      detalhe: semNumero.length ? `${semNumero.length} item(ns) sem número` : undefined,
+      ok: semNumero.length === 0 && marcadores === 0,
+      detalhe: semNumero.length
+        ? `${semNumero.length} item(ns) sem número`
+        : marcadores
+          ? `${marcadores} item(ns) com marcador [ ] para você preencher`
+          : undefined,
+    },
+    {
+      regra: "Itens começam com verbo de ação",
+      ok: semVerbo.length === 0,
+      detalhe: semVerbo.length ? `Reescreva: ${semVerbo.map((i) => `"${i.slice(0, 50)}…"`).join("; ")}` : undefined,
+    },
+    {
+      regra: "Palavras-chave escritas como na vaga",
+      ok: !desc || (c.palavrasChave.length > 0 && chavesForaDaVaga.length === 0),
+      detalhe: !desc
+        ? "Sem descrição da vaga: não deu pra conferir"
+        : chavesForaDaVaga.length
+          ? `Não aparecem assim na vaga: ${chavesForaDaVaga.join(", ")}`
+          : `${c.palavrasChave.length} termos copiados da vaga`,
     },
     {
       regra: "Sem exagerar o seu papel (liderei, gerenciei, especialista…)",
       ok: inflados.length === 0,
       detalhe: inflados.length
         ? `Confira se é verdade ou troque o verbo: ${inflados.map((i) => `"${i.slice(0, 60)}…"`).join("; ")}`
+        : undefined,
+    },
+    {
+      regra: "Habilidades que estão no seu perfil",
+      ok: foraDoPerfil.length === 0,
+      detalhe: foraDoPerfil.length
+        ? `Não estão no perfil, confirme ou apague: ${foraDoPerfil.join(", ")}`
         : undefined,
     },
     {
@@ -253,7 +316,7 @@ export async function gerarCurriculo(
 
   if (!usarGemini && !process.env.ANTHROPIC_API_KEY) {
     const curriculo = gerarDemo(perfil, titulo);
-    return { curriculo, checklist: validar(curriculo, titulo), demo: true };
+    return { curriculo, checklist: validar(curriculo, titulo, perfil, vaga.descricao), demo: true };
   }
 
   const skill = await carregarSkill();
@@ -286,7 +349,6 @@ ${JSON.stringify(dados, null, 2)}`;
         return { modelo, texto: await chamarClaude(modelo, sistema, pedido) };
       })();
 
-  const curriculo = normalizar(extrairJson(texto) as Record<string, unknown>, perfil);
-  if (!curriculo.titulo) curriculo.titulo = titulo;
-  return { curriculo, checklist: validar(curriculo, titulo), demo: false, modelo };
+  const curriculo = normalizar(extrairJson(texto) as Record<string, unknown>, perfil, titulo);
+  return { curriculo, checklist: validar(curriculo, titulo, perfil, vaga.descricao), demo: false, modelo };
 }
