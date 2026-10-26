@@ -26,7 +26,7 @@ Regras extras:
 - Não gere nome nem contato: o sistema preenche isso direto do perfil.
 - Copie "empresa" exatamente como está nos dados (o sistema usa esse campo para buscar cargo e período originais).
 - Nunca invente empresa, cargo, período, habilidade ou número. Quando faltar um número, use um marcador entre colchetes, como [X%] ou [N clientes], e registre em "pendencias".
-- Não aumente o papel do candidato: só use verbos como "liderei", "gerenciei" ou "coordenei" e títulos como "especialista" ou "sênior" se os dados disserem isso. Na dúvida, use "desenvolvi", "criei", "implementei" ou "integrei".
+- Não aumente o papel do candidato: só use verbos como "liderei", "gerenciei" ou "coordenei" e títulos como "especialista", "especializado" ou "sênior" se os dados disserem isso. Na dúvida, use "desenvolvi", "criei", "implementei" ou "integrei".
 - Experiências ficam em ordem cronológica inversa, como no passo 6 (o sistema reordena pelo perfil). Projetos podem ser escolhidos e ordenados pelo que mais importa para a vaga. Pode deixar de fora o que não ajuda.
 - Escreva os itens na 1ª pessoa do pretérito ("Desenvolvi", "Integrei", "Criei"), sempre começando pelo verbo.
 - Todo item de experiência termina com número ou resultado. Se os dados não têm o número, escreva o item com o marcador entre colchetes no lugar dele, por exemplo "Automatizei [N] relatórios, economizando [X horas/semana]".
@@ -63,7 +63,37 @@ function experienciaDoPerfil(perfil: Perfil, empresa: string) {
   });
 }
 
-function normalizar(bruto: Record<string, unknown>, perfil: Perfil, tituloVaga: string): Curriculo {
+/**
+ * Tira os marcadores [X] de um texto, para o envio automático (decisão do Guilherme: sem número
+ * inventado e sem marcador; o resultado fica descrito em palavras).
+ * "aumentando o engajamento em [Z%]." vira "aumentando o engajamento."
+ */
+export function semMarcadores(texto: string): string {
+  const MARCADOR = /\[[^\]]*\]/;
+  const t = texto.trim();
+  if (!MARCADOR.test(t)) return t;
+  const ponto = /[.!]$/.test(t) ? "." : "";
+  // Oração secundária com marcador ("..., aumentando o engajamento em [Z%]") sai inteira.
+  const [principal, ...resto] = t.replace(/[.!]$/, "").split(/,\s+/);
+  const limpo = [principal, ...resto.filter((p) => !MARCADOR.test(p))]
+    .join(", ")
+    // Na principal, só o marcador sai (e a preposição que ficaria solta no fim).
+    .replace(/\s+(?:em|de|para|com|a|até|cerca de)\s+\[[^\]]*\]%?(?=\s*[.,;:]|\s*$)/gi, "")
+    .replace(/\s*\[[^\]]*\]%?/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([.,;:])/g, "$1")
+    .trim();
+  return limpo + ponto;
+}
+
+/** No automático, troca títulos que exageram por expressões neutras (mesmo sentido, sem se dar um título). */
+export function atenuar(texto: string): string {
+  return texto
+    .replace(/\bespecializad[oa]s? em\b/gi, "com foco em")
+    .replace(/\bespecialista em\b/gi, "com experiência em");
+}
+
+function normalizar(bruto: Record<string, unknown>, perfil: Perfil, tituloVaga: string, automatico = false): Curriculo {
   const arr = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
   const s = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const pendencias = lista(bruto.pendencias);
@@ -76,7 +106,10 @@ function normalizar(bruto: Record<string, unknown>, perfil: Perfil, tituloVaga: 
       return [];
     }
     // Passo 6: sem número, o item ganha um marcador visível para o candidato preencher.
-    const itens = lista(e.itens).map((i) => (/\d|\[[^\]]+\]/.test(i) ? i : `${i.replace(/\.$/, "")} [resultado/número].`));
+    // No automático ninguém vai preencher, então o item fica como a IA escreveu (e sem marcador).
+    const itens = lista(e.itens).map((i) =>
+      automatico ? atenuar(semMarcadores(i)) :/\d|\[[^\]]+\]/.test(i) ? i : `${i.replace(/\.$/, "")} [resultado/número].`,
+    );
     return [{ original, cargo: original.cargo, empresa: original.empresa, periodo: original.periodo, itens }];
   });
   // Passo 6: ordem cronológica inversa = a ordem do perfil (o mais recente primeiro).
@@ -100,9 +133,12 @@ function normalizar(bruto: Record<string, unknown>, perfil: Perfil, tituloVaga: 
     contato: perfil.contato,
     // Passo 3: o título é o nome exato da vaga, não o que a IA achar melhor.
     titulo: tituloVaga,
-    resumo: s(bruto.resumo),
+    resumo: automatico ? atenuar(semMarcadores(s(bruto.resumo))) : s(bruto.resumo),
     experiencias: experiencias.map(({ original: _o, ...e }) => (void _o, e)),
-    projetos: arr(bruto.projetos).map((p) => ({ nome: s(p.nome), itens: lista(p.itens) })),
+    projetos: arr(bruto.projetos).map((p) => ({
+      nome: s(p.nome),
+      itens: automatico ? lista(p.itens).map((i) => atenuar(semMarcadores(i))) : lista(p.itens),
+    })),
     // Formação, idiomas e cursos não precisam de reescrita: vêm direto do perfil.
     formacao: perfil.formacao,
     habilidades: sugeridas.filter((h) => !inventadas.includes(h)),
@@ -307,10 +343,20 @@ async function chamarClaude(modelo: string, sistema: string, pedido: string): Pr
   return msg.content.map((b) => (b.type === "text" ? b.text : "")).join("");
 }
 
+/** Regra trocada no envio automático: ninguém vai estar na tela para preencher marcador. */
+const REGRA_AUTOMATICO = `
+## Envio automático (vale mais que as regras de marcador acima)
+Este currículo será enviado sem revisão humana. NÃO use marcadores entre colchetes em lugar nenhum.
+Quando os dados não tiverem número, descreva a entrega ou o resultado em palavras, sem inventar número
+(ex.: "Desenvolvi agentes de IA com RAG para o atendimento ao cliente").
+`;
+
 export async function gerarCurriculo(
   perfil: Perfil,
   vaga: { titulo: string; descricao: string },
+  opcoes: { automatico?: boolean } = {},
 ): Promise<RespostaGerar> {
+  const automatico = Boolean(opcoes.automatico);
   const titulo = vaga.titulo.trim();
   const usarGemini = Boolean(process.env.GEMINI_API_KEY);
 
@@ -327,7 +373,7 @@ export async function gerarCurriculo(
   const sistema = `Você é especialista em currículos e segue à risca a skill abaixo.
 
 ${skill}
-${CONTRATO_SAIDA}`;
+${CONTRATO_SAIDA}${automatico ? REGRA_AUTOMATICO : ""}`;
   const hoje = new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   const pedido = `DATA DE HOJE: ${hoje} (períodos até esta data são válidos, não são erro)
 
@@ -349,6 +395,6 @@ ${JSON.stringify(dados, null, 2)}`;
         return { modelo, texto: await chamarClaude(modelo, sistema, pedido) };
       })();
 
-  const curriculo = normalizar(extrairJson(texto) as Record<string, unknown>, perfil, titulo);
+  const curriculo = normalizar(extrairJson(texto) as Record<string, unknown>, perfil, titulo, automatico);
   return { curriculo, checklist: validar(curriculo, titulo, perfil, vaga.descricao), demo: false, modelo };
 }

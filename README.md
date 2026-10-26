@@ -36,6 +36,15 @@ Configuração (opcional, no `.env.local`):
 - `VAGAS_BOT_DIR`: pasta do vagas-bot. O padrão é `../vagas-bot/vagas-bot`.
 - `PONTE_VAGAS_BOT`: endereço da ponte. O padrão é `http://127.0.0.1:47614`.
 
+## Candidatura automática
+
+Com `AUTO_CANDIDATAR=1` no `.env.local`, a cada 30 minutos (`AUTO_INTERVALO_MIN`) o sistema atualiza o vagas-bot, gera o currículo de cada vaga nova e manda o `candidatar.py` se candidatar. O painel **Candidatura automática** da tela mostra o andamento e abre o currículo enviado.
+
+- Só entram vagas que o vagas-bot viu depois de ligar o automático. LinkedIn e Gupy ficam de fora (precisam de você).
+- No automático não há número inventado nem marcador: o resultado fica descrito em palavras. Se a IA exagerar o seu papel ("liderei", "gerenciei"), ela gera de novo uma vez; se insistir, a vaga fica como **Revisar** e não é enviada.
+- O estado fica em `data/auto.json` (fora do Git).
+- Para deixar ligado, rode `iniciar_curriculo_ia.vbs` (sobe em produção, sem janela). Para ligar junto com o PC, copie-o para a pasta Inicializar do Windows (Win+R, `shell:startup`). O `candidatar.py` do vagas-bot também precisa estar rodando.
+
 ## Estrutura
 
 | Arquivo | O que é |
@@ -47,6 +56,8 @@ Configuração (opcional, no `.env.local`):
 | `src/app/api/*` | Rotas `gerar`, `perfil`, `vagas`, `vagas-bot` e `candidatar` |
 | `src/lib/vagasBot.ts` | Leitura do `vagas.db` do vagas-bot |
 | `src/lib/descricaoVaga.ts` | Busca da descrição no anúncio |
+| `src/lib/auto.ts` | Candidatura automática (relógio em `src/instrumentation.ts`) |
+| `src/lib/ponte.ts` | Conversa com o `candidatar.py` do vagas-bot |
 | `src/components/Curriculo.tsx` | A folha A4 de uma coluna (sem foto, tabela ou barrinha) |
 | `.claude/skills/curriculo-ats/` | A mesma skill, para o Claude Code usar ao evoluir o projeto |
 

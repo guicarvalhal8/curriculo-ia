@@ -67,3 +67,26 @@ export type VagaBot = {
   descricao: string;
   data: string;
 };
+
+/** Uma vaga que passou pela candidatura automática. */
+export type ItemAuto = {
+  id: string;
+  titulo: string;
+  empresa: string;
+  link: string;
+  fonte: string;
+  estado: "gerando" | "fila" | "candidatando" | "ok" | "teste" | "precisa" | "erro" | "ja_feita" | "revisar";
+  texto: string;
+  ponteId?: string;
+  resposta?: RespostaGerar;
+  em: string;
+};
+
+export type EstadoAuto = {
+  ligado: boolean;
+  /** Só entram vagas que o vagas-bot viu depois disso (UTC, no formato do SQLite). */
+  inicio: string;
+  ultimaRodada?: string;
+  rodando: boolean;
+  itens: ItemAuto[];
+};

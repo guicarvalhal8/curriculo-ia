@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Curriculo, { curriculoEmTexto } from "@/components/Curriculo";
-import type { ItemChecklist, RespostaGerar, Vaga, VagaBot } from "@/lib/tipos";
+import { useEffect, useRef, useState } from "react";
+import Curriculo, { curriculoEmTexto, documentoHtml } from "@/components/Curriculo";
+import { tituloLimpo } from "@/lib/texto";
+import type { EstadoAuto, ItemAuto, ItemChecklist, RespostaGerar, Vaga, VagaBot } from "@/lib/tipos";
 
 type Salvo = { id: string; titulo: string; link?: string; data: string; resposta: RespostaGerar };
 
@@ -24,6 +25,38 @@ const ROTULO_CANDIDATURA: Record<Candidatura["estado"], string> = {
   ja_feita: "Você já se candidatou",
 };
 
+const ROTULO_AUTO: Record<ItemAuto["estado"], string> = {
+  gerando: "Gerando",
+  fila: "Na fila",
+  candidatando: "Candidatando",
+  ok: "Enviada",
+  teste: "Teste",
+  precisa: "Precisa de você",
+  erro: "Erro",
+  ja_feita: "Já feita",
+  revisar: "Revisar",
+};
+
+const horaCurta = (iso: string) =>
+  new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+/** Como o candidatar.py vai tratar a vaga, dito antes do envio (e o que provavelmente volta pra você). */
+function caminhoDoEnvio(link: string): { como: string; alerta?: string } {
+  if (link.includes("github.com"))
+    return { como: "Por e-mail ao recrutador, com o PDF anexado, ou pelo formulário que o anúncio indicar." };
+  if (link.includes("linkedin."))
+    return {
+      como: "LinkedIn não é preenchido automaticamente.",
+      alerta: "O vagas-bot vai te devolver o link para você se candidatar por lá, com este PDF.",
+    };
+  if (link.includes("gupy.io"))
+    return {
+      como: "Pelo formulário da Gupy.",
+      alerta: "A Gupy pede login, então essa costuma voltar para você terminar.",
+    };
+  return { como: "Pelo formulário do site, preenchido automaticamente com os seus dados e este PDF." };
+}
+
 /**
  * A folha como está na tela (com as edições da pessoa) num HTML independente,
  * para o candidatar.py transformar no PDF que vai pra empresa.
@@ -40,7 +73,7 @@ function documentoDaFolha(folha: HTMLElement): string {
     .join("\n");
   const copia = folha.cloneNode(true) as HTMLElement;
   copia.removeAttribute("contenteditable");
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><style>${css}</style></head><body style="background:#fff;margin:0">${copia.outerHTML}</body></html>`;
+  return documentoHtml(copia.outerHTML, css);
 }
 const CHAVE_HISTORICO = "curriculo-ia:historico";
 
@@ -57,8 +90,6 @@ function gravarHistorico(h: Salvo[]) {
   } catch {}
 }
 
-/** Tira prefixos de local que os repositórios do GitHub colocam no título, como "[Remoto] ". */
-const tituloLimpo = (t: string) => t.replace(/^\s*\[[^\]]*\]\s*/, "").trim();
 
 /** A4 em pixels de tela (297mm a 96dpi). */
 const ALTURA_A4 = (297 * 96) / 25.4;
@@ -111,6 +142,33 @@ export default function Gerar() {
   // Link do anúncio do currículo na tela: sem ele (vaga digitada) não dá pra se candidatar daqui.
   const [linkVaga, setLinkVaga] = useState("");
   const [candidatura, setCandidatura] = useState<Candidatura | null>(null);
+  const confirmacao = useRef<HTMLDialogElement>(null);
+  const botaoCancelar = useRef<HTMLButtonElement>(null);
+  const [auto, setAuto] = useState<EstadoAuto | null>(null);
+
+  // Painel do automático: atualiza sozinho enquanto a tela está aberta.
+  useEffect(() => {
+    const ler = () => fetch("/api/auto").then((r) => r.json()).then(setAuto).catch(() => {});
+    ler();
+    const t = setInterval(ler, 15_000);
+    return () => clearInterval(t);
+  }, []);
+
+  async function rodarAutoAgora() {
+    const r = await fetch("/api/auto", { method: "POST" });
+    setAuto(await r.json());
+    avisar("Rodada iniciada");
+  }
+
+  function abrirAuto(i: ItemAuto) {
+    if (!i.resposta) return;
+    setResp(i.resposta);
+    setTitulo(i.titulo);
+    setLinkVaga(i.link);
+    setVagaAtiva(i.id);
+    setCandidatura(null);
+    setVersao((v) => v + 1);
+  }
 
   // Acompanha a candidatura até um estado final (o candidatar.py pode levar minutos num formulário).
   useEffect(() => {
@@ -245,7 +303,15 @@ export default function Gerar() {
       setCandidatura({ estado: "bloqueada", texto: `Ainda tem o marcador ${marcador[0]} na folha. Clique no texto e troque por um número real (ou apague o trecho) antes de enviar.` });
       return;
     }
-    if (!confirm(`Enviar este currículo para a vaga "${titulo}"?`)) return;
+    confirmacao.current?.showModal();
+    // Começa no Cancelar: um Enter sem querer não pode mandar a candidatura.
+    botaoCancelar.current?.focus();
+  }
+
+  async function enviarCandidatura() {
+    const folha = document.querySelector<HTMLElement>(".folha");
+    confirmacao.current?.close();
+    if (!folha || !linkVaga) return;
     setCandidatura({ estado: "fila", texto: "Enviando para o vagas-bot..." });
     const r = await fetch("/api/candidatar", {
       method: "POST",
@@ -345,6 +411,43 @@ export default function Gerar() {
         </div>
         </details>
         {erro && <p className="erro">{erro}</p>}
+
+        {auto && (
+          <section className="auto">
+            <div className="cabecalho-vagas">
+              <h2>Candidatura automática</h2>
+              {auto.ligado && (
+                <button className="pequeno" disabled={auto.rodando} onClick={rodarAutoAgora}>
+                  {auto.rodando ? "Rodando..." : "Rodar"}
+                </button>
+              )}
+            </div>
+            {auto.ligado ? (
+              <p className="dica">
+                Ligada. Vagas novas do vagas-bot (menos LinkedIn e Gupy) ganham currículo e são enviadas sozinhas.
+                {auto.ultimaRodada && <> Última rodada: {horaCurta(auto.ultimaRodada)}.</>}
+              </p>
+            ) : (
+              <p className="dica">Desligada. Para ligar, coloque AUTO_CANDIDATAR=1 no .env.local e reinicie o sistema.</p>
+            )}
+            {auto.itens.length > 0 ? (
+              <ul className="auto-lista">
+                {auto.itens.slice(0, 30).map((i) => (
+                  <li key={i.id} className={i.id === vagaAtiva ? "ativa" : ""}>
+                    <button onClick={() => abrirAuto(i)} disabled={!i.resposta} title={i.texto}>
+                      <strong>{i.titulo}</strong>
+                      <span>
+                        <em className={"estado-auto " + i.estado}>{ROTULO_AUTO[i.estado]}</em> {i.empresa} · {horaCurta(i.em)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              auto.ligado && <p className="dica">Nenhuma vaga nova desde que foi ligada.</p>
+            )}
+          </section>
+        )}
 
         {historico.length > 0 && (
           <>
@@ -461,6 +564,70 @@ export default function Gerar() {
         )}
         {aviso && <div className="toast">{aviso}</div>}
       </section>
+
+      <dialog
+        ref={confirmacao}
+        className="confirmacao"
+        aria-labelledby="confirmacao-titulo"
+        onClick={(e) => e.target === e.currentTarget && confirmacao.current?.close()}
+      >
+        {linkVaga && (() => {
+          const vaga = vagasBot.find((v) => v.link === linkVaga);
+          const envio = caminhoDoEnvio(linkVaga);
+          return (
+            <div className="confirmacao-corpo">
+              <p className="confirmacao-rotulo">Confirmar candidatura</p>
+              <h2 id="confirmacao-titulo">{titulo}</h2>
+              {vaga && (
+                <p className="confirmacao-empresa">
+                  {vaga.fonte === "github" ? `Publicada em ${vaga.empresa} (GitHub)` : vaga.empresa}
+                  {vaga.local && <> · {vaga.local}</>}
+                </p>
+              )}
+
+              <dl>
+                <div>
+                  <dt>Currículo</dt>
+                  <dd>
+                    O PDF exatamente como está na tela, com as suas edições
+                    {medidas && medidas.paginas === 1 && " (1 página)"}.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Envio</dt>
+                  <dd>{envio.como}</dd>
+                </div>
+                <div>
+                  <dt>Anúncio</dt>
+                  <dd>
+                    <a href={linkVaga} target="_blank" rel="noreferrer">
+                      Abrir para conferir ↗
+                    </a>
+                  </dd>
+                </div>
+              </dl>
+
+              {envio.alerta ? (
+                <p className="confirmacao-alerta">{envio.alerta}</p>
+              ) : (
+                <p className="confirmacao-nota">
+                  O envio é real: a empresa recebe na hora. Se o formulário tiver uma pergunta que o vagas-bot não sabe
+                  responder, ele pergunta no seu Telegram.
+                </p>
+              )}
+
+              <div className="confirmacao-acoes">
+                <button ref={botaoCancelar} onClick={() => confirmacao.current?.close()}>
+                  Cancelar
+                </button>
+                <button className="primario" onClick={enviarCandidatura}>
+                  Enviar candidatura
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+      </dialog>
     </main>
   );
 }
