@@ -1,0 +1,78 @@
+{
+  "nome": "Guilherme Oliveira",
+  "contato": {
+    "telefone": "",
+    "email": "gui.carvalhal8@gmail.com",
+    "linkedin": "",
+    "github": "",
+    "portfolio": "",
+    "cidade": "Anápolis/GO"
+  },
+  "sobre": "Desenvolvedor Backend/Full Stack e Engenheiro de IA. Constrói agentes de IA com RAG, integrações com WhatsApp/Meta e SaaS em produção.",
+  "experiencias": [
+    {
+      "cargo": "Auxiliar de Suporte (atuação como Desenvolvedor Backend/Full Stack e Engenheiro de IA)",
+      "empresa": "SN Sistemas",
+      "periodo": "ago/2026 – atual",
+      "atividades": [
+        "Desenvolvimento de agentes de IA com RAG",
+        "Integrações com WhatsApp/Meta",
+        "Desenvolvimento de connector em C#",
+        "Desenvolvimento de apps em Next.js e Electron",
+        "Criação e publicação da landing page do produto S7 ERP (GitHub + Render)"
+      ]
+    },
+    {
+      "cargo": "Desenvolvedor Web Freelancer",
+      "empresa": "Tron Pages (estúdio de sites em parceria)",
+      "periodo": "",
+      "atividades": [
+        "Criação de sites para negócios locais",
+        "Entrega do projeto Ortoative"
+      ]
+    }
+  ],
+  "projetos": [
+    {
+      "nome": "Certalance (certalance.com.br)",
+      "descricao": "SaaS de licitação em produção: busca editais do PNCP e faz análise com IA; prospecção de clientes via WhatsApp com Evolution API."
+    },
+    {
+      "nome": "Zaptag",
+      "descricao": "Produto de automação com adesivos NFC (avaliação no Google, cardápio, Wi-Fi, Pix) e cartão de fidelidade NFC."
+    },
+    {
+      "nome": "Ponte Social",
+      "descricao": "Projeto Integrador em grupo (faculdade): Sistema Inteligente de Encaminhamento Social."
+    },
+    {
+      "nome": "NEXORA",
+      "descricao": "Sistema de monitoramento acadêmico em Python."
+    }
+  ],
+  "formacao": [
+    {
+      "curso": "Bacharelado em Inteligência Artificial",
+      "instituicao": "UniEVANGÉLICA",
+      "periodo": "2025 – 2029 (em andamento)"
+    }
+  ],
+  "habilidades": [
+    "Python",
+    "C#",
+    "Java (estudando)",
+    "Next.js",
+    "Electron",
+    "HTML",
+    "CSS",
+    "Agentes de IA",
+    "RAG",
+    "API do WhatsApp/Meta",
+    "Evolution API",
+    "Git/GitHub",
+    "Render"
+  ],
+  "idiomas": [],
+  "cursos": [],
+  "observacoes": ""
+}
